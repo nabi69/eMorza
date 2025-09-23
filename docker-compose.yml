@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  devbox:
+    build: .
+    container_name: devbox
+    ports:
+      - "22:22"       # SSH
+      - "5432:5432"   # PostgreSQL
+      - "80:80"       # Nginx / pgAdmin
+    volumes:
+      - pgdata:/data/postgresql
+      - pgadmin:/data/pgadmin
+      - nginxdata:/data/nginx
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@morzaa.local
+      PGADMIN_DEFAULT_PASSWORD: morzaa123
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  pgadmin:
+  nginxdata:
