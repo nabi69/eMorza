@@ -21,6 +21,11 @@ network:
     ens33:
       addresses:
       - "192.168.6.50/24"
+#This is for VirtualBOX Bridge interface.
+     enp0s8: 
+      dhcp4: true
+      dhcp6: false
+
 #Really it has a PAIN if you are not serius.
 #Edit your interface name and network.
 # vi /etc/netplan/50-cloud-init.yaml
