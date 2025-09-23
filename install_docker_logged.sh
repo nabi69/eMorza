@@ -1,5 +1,5 @@
 #!/bin/bash
-
+echo "=== Play with your OWN RISK Xp Group INC ==="
 # Docker Installation Quick Fix Script
 echo "=== Docker Installation Quick Fix ==="
 
@@ -96,3 +96,5 @@ echo "✓ Docker installation completed!"
 echo "⚠ Please log out and log back in to use Docker without sudo"
 echo ""
 echo "Test your installation with: docker run hello-world"
+echo "=== No Pain NO GAIN..Enjoy ==="
+
