@@ -98,6 +98,8 @@ done
 
   echo -e "\n🌍 Public IP (via STUN):"
   stun stun.l.google.com:19302
+  echo -e "\n🌍 Public IP (via DNS):"
+  curl -s https://api.ipify.org || wget -qO- https://ipinfo.io/ip
 
   echo -e "\n🔎 NAT Clues from conntrack:"
   sudo conntrack -L | grep -E 'src=|dst=' | head -n 20
@@ -107,6 +109,12 @@ done
 
   echo -e "\n📈 Docker Events (last 5 min):"
   docker events --since 5m --until now
+  
+  echo -e "\n🧹 Purging unused Docker resources..."
+  docker container prune -f
+  docker image prune -f
+  docker volume prune -f
+  docker network prune -f
 
   echo -e "\n🧹 Purging old diagnostic logs (older than 7 days)..."
   find . -name "docker-lab-diagnostic-*.log" -type f -mtime +7 -exec rm -v {} \;
