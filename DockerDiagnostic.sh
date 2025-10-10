@@ -74,8 +74,9 @@ install_missing_packages() {
     done
     
     if [ ${#missing_packages[@]} -gt 0 ]; then
-        echo -e "\n${CYAN}Installing missing packages...${NC}"
+        echo -e "\n${CYAN}Upgrade and Installing missing packages...${NC}"
         sudo apt update -qq
+        sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -qq
         sudo apt install -y "${missing_packages[@]}"
     else
         echo -e "\n${GREEN}✓ All required packages are installed${NC}"
