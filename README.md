@@ -115,3 +115,5 @@ I'd suggest **Option 1 (Host Network)** for simplicity, or **Option 4** if you w
 - Web: `http://<your_host_192.168.56.x_ip>`
 
 Which option would you like to try first?
+20251010
+
