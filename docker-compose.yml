@@ -1,0 +1,270 @@
+#version: '3.8'
+
+################################################################
+# External macvlan network (create this once on the host)
+# docker network create -d macvlan \
+#   --subnet=192.168.100.0/24 \
+#   --gateway=192.168.100.1 \
+#   -o parent=ens32 \
+#   --ip-range=192.168.100.192/27 \
+#   net_100
+################################################################
+
+networks:
+  net_100:
+    external: true
+
+volumes:
+  pgdata:
+  redisdata:
+  mqdata:
+  miniodata:
+  grafanadata:
+
+services:
+
+  # Angular Frontend (Nginx hosting the built SPA)
+  frontend:
+    image: nginx:alpine
+    restart: unless-stopped
+    networks:
+      net_100:
+        ipv4_address: 192.168.100.193
+    ports:
+      - "8080:80"                                  # reachable from LAN as container IP (and via mapped port on other hosts)
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+
+  # API Gateway / ALB simulation (Nginx reverse proxy)
+  api:
+    image: nginx:alpine
+    restart: unless-stopped
+    networks:
+      net_100:
+        ipv4_address: 192.168.100.194
+    ports:
+      - "8081:80"
+    volumes:
+      - ./nginx/api.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - microservice
+
+  # .NET Core Microservice
+  microservice:
+    build:
+      context: ./microservice
+      dockerfile: Dockerfile
+    image: dotnet_microservice:local
+    restart: unless-stopped
+    networks:
+      net_100:
+        ipv4_address: 192.168.100.195
+    ports:
+      - "5000:5000"
+    environment:
+      - ConnectionStrings__Postgres=Host=db;Port=5432;Database=appdb;Username=postgres;Password=secret
+      - Redis__Host=redis
+      - MQ__Host=rabbitmq
+      - KEYCLOAK_URL=http://192.168.100.200:8080    # Keycloak IP below
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+
+  # PostgreSQL (RDS equivalent)
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    networks:
+      net_100:
+        ipv4_address: 192.168.100.196
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: appdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d appdb -h localhost || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # Redis (ElastiCache equivalent)
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    networks:
+      net_100:
+        ipv4_address: 192.168.100.197
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # RabbitMQ (Amazon MQ equivalent)
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: unless-stopped
+    networks:
+      net_100:
+        ipv4_address: 192.168.100.198
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - mqdata:/var/lib/rabbitmq
+    healthcheck:
+  #    test: ["CMD-SHELL", "curl -f http://localhost:15672/ || exit 1"]
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+
+  # MinIO (S3 Equivalent)
+  minio:
+    image: quay.io/minio/minio
+    restart: unless-stopped
+    networks:
+      net_100:
+        ipv4_address: 192.168.100.199
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: admin123
+    command: server /data --console-address ":9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  # Keycloak (Cognito Equivalent) - dev-mode with bootstrap admin
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: keycloak_iam
+    restart: unless-stopped
+    networks:
+      net_100:
+        ipv4_address: 192.168.100.200
+    ports:
+      - "8082:8080"
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://192.168.100.196:5432/appdb
+      KC_DB_USERNAME: postgres
+      KC_DB_PASSWORD: secret
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    command: start-dev
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health/ready || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 30
+      start_period: 300s
+
+  # Prometheus (CloudWatch-ish)
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    networks:
+      net_100:
+        ipv4_address: 192.168.100.201
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  # Grafana (visualization)
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    networks:
+      net_100:
+        ipv4_address: 192.168.100.202
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafanadata:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+  # Toxiproxy (traffic/latency failure injection)
+  toxiproxy:
+    image: shopify/toxiproxy:latest
+    restart: unless-stopped
+    networks:
+      net_100:
+        ipv4_address: 192.168.100.203
+    ports:
+      - "8474:8474"         # admin API
+
+  # Locust (load testing)
+  locust:
+    image: locustio/locust:latest
+    restart: unless-stopped
+    networks:
+      net_100:
+        ipv4_address: 192.168.100.204
+    ports:
+      - "8089:8089"
+    volumes:
+      - ./locust:/mnt/locust
+    command: -f /mnt/locust/locustfile.py --host=http://192.168.100.193  # frontend IP
+
+  # pgAdmin (Postgres GUI)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    restart: unless-stopped
+    networks:
+      net_100:
+        ipv4_address: 192.168.100.205
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    depends_on:
+      - db
+
+  # Helper container so the Ubuntu host can reach macvlan range
+  net-helper:
+    image: alpine:latest
+    container_name: net-helper
+    restart: unless-stopped
+    networks:
+      net_100:
+        ipv4_address: 192.168.100.254
+    command: sh -c "sleep infinity"
