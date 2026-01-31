@@ -1,0 +1,240 @@
+nabi@morzatechvm01:~/Morzaa$ cat docker-compose.yml.morzaa 
+services:
+  # Ecommerce App Services
+  ecommerce-app:
+    image: ecommerce-app-img
+    container_name: ecommerce-app-container
+    expose:
+      - 80
+    networks:
+      - microservices-network
+    restart: unless-stopped
+  ecommerce-admin-panel:
+    image: ecommerce-admin-img
+    container_name: ecommerce-admin-panel
+    expose:
+      - 4201
+    networks:
+      - microservices-network
+    restart: unless-stopped
+  cms-panel:
+    image: cms-blazor-img
+    container_name: cms-blazor-container
+    expose:
+      - 7126
+    networks:
+      - microservices-network
+    restart: unless-stopped
+  inventory-service-api:
+    image: inventory-api-img
+    container_name: inventory-api-container
+    expose:
+      - 5005
+    networks:
+      - microservices-network
+    restart: unless-stopped
+  ordering-service-api:
+    image: ordering-api-img
+    container_name: ordering-api-container
+    expose:
+      - 5009
+    networks:
+      - microservices-network
+    restart: unless-stopped
+  cms-service-api:
+    image: cms-api-img
+    container_name: cms-api-container
+    expose:
+      - 5006
+    networks:
+      - microservices-network
+    restart: unless-stopped
+  delivery-service-api:
+    image: delivery-api-img
+    container_name: delivery-api-container
+    expose:
+      - 5007
+    networks:
+      - microservices-network
+    restart: unless-stopped
+  ecommerce-gateway-api:
+    image: gateway-img
+    container_name: api-gateway-container
+    ports:
+      - 5008
+    networks:
+      - microservices-network
+    restart: unless-stopped
+  # Proxy-Service
+  nginx:
+    image: nginx:alpine
+    container_name: nginx-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "5005:5005"  # Inventory API
+      - "5006:5006"  # CMS API
+      - "5007:5007"  # Delivery API
+      - "5008:5008"  # Gateway API
+      - "5009:5009"  # Ordering API
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro  # Mount local SSL to container
+      - nginx-logs:/var/log/nginx
+      - certbot-webroot:/var/www/certbot:ro  # For Let's Encrypt validation
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - microservices-network
+    depends_on:
+      - ecommerce-app
+      - ecommerce-admin-panel
+      - cms-panel
+      - inventory-service-api
+      - ordering-service-api
+      - cms-service-api
+      - delivery-service-api
+      - ecommerce-gateway-api
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+  # Inventory Serives Database
+  postgres-inventory:
+    image: postgres:16
+    container_name: postgres-inventory
+    environment:
+      POSTGRES_USER: morzaa_inv_user
+      POSTGRES_PASSWORD: L9s!bD
+      POSTGRES_DB: InventoryDB
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-inventory-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U morzaa_inv_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - microservices-network
+    restart: unless-stopped
+  # Ordering-Service Database
+  postgres-ordering:
+    image: postgres:16
+    container_name: postgres-ordering
+    environment:
+      POSTGRES_USER: morzaa_ord_user
+      POSTGRES_PASSWORD: P5k#sB9e
+      POSTGRES_DB: OrderDB
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-ordering-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U morzaa_ord_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - microservices-network
+    restart: unless-stopped
+  # CMS-Serice Database
+  postgres-cms:
+    image: postgres:16
+    container_name: postgres-cms
+    environment:
+      POSTGRES_USER: morzaa_cms_user
+      POSTGRES_PASSWORD: tG4#pV9x
+      POSTGRES_DB: CMSDb
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres-cms-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U morzaa_cms_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Delivery-Service Database
+  postgres-delivery:
+    image: postgres:16
+    container_name: postgres-delivery
+    environment:
+      POSTGRES_USER: morzaa_del_user
+      POSTGRES_PASSWORD: R7m@kT2p
+      POSTGRES_DB: DeliveryDB
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres-delivery-data:/var/lib/postgresql/data
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
+  # Auth-Service Database
+  postgres-auth:
+    image: postgres:16
+    container_name: postgres-auth
+    environment:
+      POSTGRES_USER: morzaa_auth_user
+      POSTGRES_PASSWORD: tG4#pV9x
+      POSTGRES_DB: AuthDb
+    ports:
+      - "5436:5432"
+    volumes:
+      - postgres-auth-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U morzaa_auth_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - microservices-network
+    restart: unless-stopped
+  # RabbitMQ service
+  rabbitmq:
+    image: rabbitmq:3.11-management
+    container_name: rabbitmq-order
+    environment:
+      RABBITMQ_DEFAULT_USER: morzaa
+      RABBITMQ_DEFAULT_PASS: morzaa123
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+      - rabbitmq-log:/var/log/rabbitmq
+    networks:
+      - microservices-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+volumes:
+  postgres-cms-data:
+  postgres-inventory-data:
+  postgres-ordering-data:
+  postgres-delivery-data:
+  postgres-auth-data:
+  rabbitmq-data:
+  rabbitmq-log:
+  certbot-webroot:
+  nginx-logs:
+networks:
+  microservices-network:
+    driver: bridge
+nabi@morzatechvm01:~/Morzaa$ 
