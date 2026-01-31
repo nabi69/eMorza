@@ -1,0 +1,69 @@
+Extensive testing of RabbitMQ is essential for a microservices architecture like **Morzaa**, where order processing and asynchronous communication are core to the platform.
+
+Based on your current setup using `rabbitmq:3.11-management` with the user `morzaa`, the following test cases cover reliability, performance, and security.
+
+### 1. Reliability & Data Integrity (E-commerce Focus)
+
+These tests ensure that critical data, such as a "New Order" message, is never lost, even during system failures.
+
+* **Message Persistence**: Verify that messages survive a container restart.
+* *Test:* Publish a message to a durable queue with `delivery_mode: 2`, restart the `rabbitmq-order` container, and verify the message is still in the queue.
+
+
+* **Consumer Acknowledgments (ACKs)**: Ensure messages are not lost if a consumer crashes mid-processing.
+* *Test:* Have a consumer (e.g., `ordering-service-api`) pick up a message but crash before sending an `ACK`. Verify RabbitMQ re-queues the message for another worker.
+
+
+* **Dead Letter Exchange (DLX)**: Validate that failed messages are captured rather than discarded.
+* *Test:* Publish an invalid message that the consumer rejects without re-queuing. Verify the message is moved to your configured DLX/DLQ for manual investigation.
+
+
+* **Idempotency**: Confirm the system handles duplicate messages correctly.
+* *Test:* Send the same "Order Created" message twice. Verify the database (e.g., `OrderDB`) does not create two separate orders for the same transaction.
+
+
+
+### 2. Performance & Scalability
+
+These tests identify bottlenecks where high traffic might slow down order fulfillment.
+
+* **Load Spike Absorption**: Test how the system handles a sudden burst of orders (e.g., a Black Friday scenario).
+* *Test:* Use a tool like **PerfTest** to flood the `order_processing` queue with 10,000 messages in 10 seconds. Verify that the APIs stay responsive while RabbitMQ buffers the load.
+
+
+* **Consumer Throughput**: Determine how many workers are needed to keep the queue empty.
+* *Test:* Measure the "Ready" messages count while running one instance of the `delivery-service-api` versus three instances. Verify that horizontal scaling reduces queue depth.
+
+
+* **Prefetch Optimization**: Prevent one slow consumer from hoarding all the work.
+* *Test:* Set `prefetch_count` to 1. Verify that RabbitMQ distributes messages evenly across multiple active consumers.
+
+
+
+### 3. Security & Access Control
+
+Given your Docker configuration uses explicit ports (5672, 15672), these tests prevent unauthorized access.
+
+* **Credential Verification**: Ensure default credentials are not active.
+* *Test:* Attempt to log in to the Management UI (port 15672) using `guest/guest`. This should be denied if your environment variables are set correctly to `morzaa/morzaa123`.
+
+
+* **Vhost Isolation**: Verify that one microservice cannot accidentally read messages meant for another.
+* *Test:* If you implement virtual hosts (vhosts), ensure the `cms-service-api` user cannot access the `InventoryDB` queues.
+
+
+* **Unauthorized Port Access**: Check if RabbitMQ is exposed to the public internet.
+* *Test:* Attempt to connect to port 5672 from an external machine. It should be blocked by your VM's firewall unless it is an authorized API host.
+
+
+
+### 4. Failure & Chaos Engineering
+
+Simulate "worst-case" scenarios to see how the Morzaa stack degrades.
+
+* **Network Partition**: Simulate a network break between the API and RabbitMQ.
+* *Test:* Block traffic to the RabbitMQ container. Verify that the `ecommerce-app` shows a meaningful error to the user or retries gracefully rather than crashing completely.
+
+
+* **Disk Full (High Watermark)**: Test RabbitMQ's behavior when the host runs out of space.
+* *Test:* Temporarily fill the disk volume to trigger the `disk_free_limit` alarm. Verify that RabbitMQ stops accepting new messages (throttling) to protect itself from corruption.
