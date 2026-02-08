@@ -1,11 +1,13 @@
 #!/bin/bash
+#Rate Limit is for any service security check.
+#Backend server also need a way to remove Blocked IP or Unrestrict valid client.
 #Bellow is for an example API from Xp Group INC.
 #Before UN Comments 147.28 call me.
 #Others your network will be BLOCK.
 #You can try also from Android APP.
 #https://drive.google.com/file/d/147x7sy0Pg90_-cXkwkk7PuamTVJz8OIE/view?usp=sharing
 #URL="http://147.28.87.212:3000/api/getData"
-#
+#This is for Morzaa
 URL="https://api.morzaa.com:5005/api/admin/galleries"
 LOG="APIRateLimitEmorzaA.log"
 
